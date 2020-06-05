@@ -139,7 +139,11 @@ public class Result {
             }
 
         }
-        result.append(oliS.charAt(oliP.length() -1));
+        if(oliS.charAt(oliS.length() -1) == 'X' || oliP.charAt(oliP.length() -1) == 'X'){
+            result.append('X');
+        }else{
+            result.append(oliS.charAt(oliP.length() -1));
+        }
         return result.toString();
     }
 
