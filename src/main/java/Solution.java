@@ -14,14 +14,13 @@ import java.util.*;
 
 public class Solution {
 
-    static final String strongWeakPattern = "ZZZZZZZZZZZZZZZZZZN";
-    static final String purynyPiramidynyPattern = "PPPPPPPPPPPPPPPPPPN";
+    static final String strongWeakPattern = "Z";
+    static final String purynyPiramidynyPattern = "P";
 
     static int resultLength;
     static int oliNumbers;
     static int oligonucleotideLength;
     static String start;
-    static int lengthGap;
     static List<Snapshot> snapshots= new ArrayList<>();
     static List<String> results= new ArrayList<>();
     static List<String> pOligonucleotides = new ArrayList<>();
@@ -38,6 +37,7 @@ public class Solution {
         start = doc.getDocumentElement().getAttribute("start");
         resultLength = Integer.parseInt(doc.getDocumentElement().getAttribute("length"));
         oligonucleotideLength = start.length();
+        oliNumbers = resultLength - oligonucleotideLength + 1;
 
         NodeList nodeList = doc.getElementsByTagName("probe");
 
@@ -53,18 +53,16 @@ public class Solution {
                 for (int j = 0; j < cells.getLength(); j++) {
                     Node cell = cells.item(j);
                     if(cell.getNodeType() == Node.ELEMENT_NODE){
-                        if(pattern.equals(strongWeakPattern)){
+                        if(pattern.startsWith(strongWeakPattern)){
                             sOligonucleotides.add(cell.getFirstChild().getTextContent());
                         }
-                        else if (pattern.equals(purynyPiramidynyPattern)){
+                        else if (pattern.startsWith(purynyPiramidynyPattern)){
                             pOligonucleotides.add(cell.getFirstChild().getTextContent());
                         }
                     }
                 }
             }
         }
-        oliNumbers = Math.max(pOligonucleotides.size(), sOligonucleotides.size());
-        lengthGap = Math.abs(pOligonucleotides.size() - sOligonucleotides.size());
         runSearch();
     }
 
@@ -86,36 +84,50 @@ public class Solution {
                 }
             }
             if(current.result.oliCount() > best) {
-                System.out.println("New best: " + current.result.oliCount());
+                System.out.println("New best: " + current.result.oliCount() +
+                        " \n" + current.result.countResult() +
+                        "\n" + current.result.result);
                 best = current.result.oliCount();
             }
-            if(current.result.oliCount() == oliNumbers){
+            if(usedAll(current.result)){
                 addResult(current.result);
             }
         }
         System.out.println(results);
     }
 
+    private static boolean usedAll(Result result) {
+        for(String oli : sOligonucleotides){
+            if(!result.resultS.contains(oli)){
+                return false;
+            }
+        }
+        for(String oli : pOligonucleotides){
+            if(!result.resultP.contains(oli)){
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static Result findFirst(){
         Optional<String> firstP = pOligonucleotides.stream().filter(nucleotide -> matchesP(nucleotide, start)).findFirst();
         Optional<String> firstS = sOligonucleotides.stream().filter(nucleotide -> matchesS(nucleotide, start)).findFirst();
-        Result result = new Result(resultLength - pOligonucleotides.size() - (oligonucleotideLength -1),
-                resultLength - sOligonucleotides.size() - (oligonucleotideLength -1));
+        Result result = new Result(oliNumbers - pOligonucleotides.size(),
+                oliNumbers - sOligonucleotides.size() );
 
         if (firstP.isPresent()) {
-            result.addToResultP(firstP.get());
+            result.addToResultP(firstP.get(), 0);
         } else {
-            result.addToResultP(toRY(start));
-            result.missingP--;
+            result.addToResultP(toRY(start), 1);
         }
 
         if (firstS.isPresent()) {
-            result.addToResultS(firstS.get());
+            result.addToResultS(firstS.get(), 0);
         } else {
-            result.addToResultS(toSW(start));
-            result.missingS--;
+            result.addToResultS(toSW(start), 1);
+
         }
-        result.result.append(start);
         return result;
     }
 
@@ -149,12 +161,15 @@ public class Solution {
     }
 
     private static void addResult(Result resultDNA) {
-        System.out.println("adding new result: " + resultDNA.toString());
-        results.add(resultDNA.result.toString());
+        String result = resultDNA.countResult();
+        System.out.println("adding new result: " + result);
+        results.add(result);
     }
 
     private static Candidates findCandidates(Result result){
-        return new Candidates(findCandidatesP(result), findCandidatesS(result));
+        return new Candidates(findCandidatesP(result),
+                findCandidatesS(result),
+                result.missingP, result.missingS);
     }
 
     private static void addCandidateAndCreateSnapshot(Snapshot current) {
@@ -165,20 +180,16 @@ public class Solution {
             snapshots.add(new Snapshot(resultCopy, candidatesCopy));
         }
         current.result.add(candidate);
-        current.result.resultP.add(candidate.oliP);
-        current.result.resultS.add(candidate.oliS);
-        current.result.missingP -= candidate.gap;
-        current.result.missingS -= candidate.gap;
     }
 
     private static Map<String, Integer> findCandidatesP(Result result) {
-        int possibleDeference = result.missingP;
+        int possibleDistance = result.missingP;
         Map<String, Integer> candidates = new HashMap<>();
         for(String p : pOligonucleotides){
             if(pOligonucleotides.stream().filter(p2 -> p2.equals(p)).count() >
                     result.resultP.stream().filter(r -> r.equals(p)).count()){
                 int distance = countDistanceP(result.resultP.get(result.resultP.size() -1), p);
-                if(distance <= possibleDeference){
+                if(distance <= possibleDistance){
                     candidates.put(p, distance);
                 }
             }
@@ -202,7 +213,6 @@ public class Solution {
     }
 
     private static int countDistanceP(String first, String second) {
-    int match = 0;
     char last = first.charAt(first.length() -1);
     first = first.substring(0, first.length() - 1);
     switch (last){
@@ -214,13 +224,14 @@ public class Solution {
         case 'T' :
             first += 'Y';
             break;
+        case 'X' :
+            first += 'X';
     }
 
-    return countGap(first, second, match, last);
+    return countGap(first, second);
     }
 
     private static int countDistanceS(String first, String second) {
-        int match = 0;
         char last = first.charAt(first.length() -1);
         first = first.substring(0, first.length() - 1);
         switch (last){
@@ -232,19 +243,30 @@ public class Solution {
             case 'G' :
                 first += 'S';
                 break;
+            case 'X' :
+                first += 'X';
         }
-        return countGap(first, second, match, last);
+        return countGap(first, second);
     }
 
-    private static int countGap(String first, String second, int match, char last) {
+    public static int countGap(String first, String second) {
+        int gap = first.length() - 1;
         for (int i = 1; i < first.length(); i++) {
-            if(first.endsWith((String) second.subSequence(0,i))){
-                match = i;
+            boolean good = true;
+            for (int j = i; j < first.length(); j++) {
+                if (first.charAt(j) == second.charAt(j - i) ||
+                        first.charAt(j) == 'X' || second.charAt(j - i) == 'X') {
+                    continue;
+                }
+                good = false;
+                break;
+            }
+            if(good){
+                gap = i - 1;
+                break;
             }
         }
-        first = first.substring(0, first.length() - 1);
-        first += last;
-        return first.length() - match -1;
+        return gap;
     }
 
 }
